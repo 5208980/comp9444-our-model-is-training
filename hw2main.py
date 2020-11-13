@@ -30,6 +30,8 @@ def main():
                                   'rating': ('rating', labelField),
                                   'businessCategory': ('businessCategory', labelField)})
 
+    # print(f'Length Database: {len(dataset)}')
+
     textField.build_vocab(dataset, vectors=student.wordVectors)
 
     # Allow training on the entire dataset, or split it for training and validation.
