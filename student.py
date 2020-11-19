@@ -28,7 +28,6 @@ import re
 import torch.nn as tnn
 import torch.optim as toptim
 from torchtext.vocab import GloVe
-from torch.autograd import Variable
 import numpy as np
 # import sklearn
 
@@ -51,7 +50,6 @@ def preprocessing(sample):
   """
   Called after tokenising but before numericalising.
   """
-  # Pythonic
   preprocessed = []
   for word in sample:
     clean_word = word.strip().lower()
@@ -65,9 +63,6 @@ def postprocessing(batch, vocab):
   """
   Called after numericalising but before vectorising.
   """
-  # print(f'Batch: {batch}')
-  # print(f'Vocab: {vocab}')
-
   return batch
 
 stopWords = ['i', 'ive', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', 'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself', 'she', 'her', 'hers', 'herself', 'it', 'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves', 'what', 'which', 'who', 'whom', 'this', 'that', 'these', 'those', 'am', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'having', 'do', 'does', 'did', 'doing', 'a', 'an', 'the', 'and', 'but', 'if', 'or', 'because', 'as', 'until', 'while', 'of', 'at', 'by', 'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can', 'will', 'just', 'don', 'should', 'now']
@@ -89,13 +84,9 @@ def convertNetOutput(ratingOutput, categoryOutput):
   """
   ratingOutput = torch.round(tnn.Sigmoid()(ratingOutput)).long()
   categoryOutput = torch.argmax(categoryOutput, axis=1)
-
   # OLD
   # ratingOutput = tnn.Sigmoid()(ratingOutput).long()
   # categoryOutput = np.argmax(categoryOutput, axis=1)  # Won't work with cuda:0
-
-  # print(f'ratingOutput: {ratingOutput}')
-  # print(f'categoryOutput: {categoryOutput}')
   return ratingOutput, categoryOutput
 
 ################################################################################
@@ -118,15 +109,12 @@ class network(tnn.Module):
     super(network, self).__init__()
     self.relu = tnn.ReLU()
 
-    self.pDropOut = 0.5
+    self.pDropOut = 0.3
     self.dropout = tnn.Dropout(self.pDropOut)
 
     self.hiddenSize = hiddenSize
     self.numLayers = numLayers
     self.vectorSize = vectorSize
-
-    self.conv = tnn.Conv1d(self.vectorSize, self.vectorSize, kernel_size=8, padding=5)
-    self.pool = tnn.MaxPool1d(4)
 
     # Rating network
     self.initRatingModel()
@@ -138,31 +126,28 @@ class network(tnn.Module):
       hidden_size=self.hiddenSize,
       batch_first=True,
       num_layers=self.numLayers,
-      # bias=True,
-      # dropout=self.pDropOut,
+      bias=True,
+      dropout=self.pDropOut,
       bidirectional=True
       )
-    self.ratingLin1 = tnn.Linear(self.hiddenSize*self.numLayers, 512)
-    self.ratingLin2 = tnn.Linear(512, 1)
+    self.ratingLin1 = tnn.Linear(self.hiddenSize*self.numLayers, 64)
+    self.ratingLin2 = tnn.Linear(64, 1)
 
   def initCategoryModel(self):
     self.categoryLSTM = tnn.LSTM(input_size=self.vectorSize,
       hidden_size=self.hiddenSize,
       batch_first=True,
       num_layers=self.numLayers,
-      # bias=True,
-      # dropout=self.pDropOut,
+      bias=True,
+      dropout=self.pDropOut,
       bidirectional=True)
-    self.categoryLin1 = tnn.Linear(self.hiddenSize*self.numLayers, 512)
-    self.categoryLin2 = tnn.Linear(512, 5)
+    self.categoryLin1 = tnn.Linear(self.hiddenSize*self.numLayers, 64)
+    self.categoryLin2 = tnn.Linear(64, 5)
 
   # (nLabels, batchSize, hiddenSize)
   def forwardRating(self, input, length):
     # LSTM
-    h0 = Variable(torch.zeros(2, len(length), self.hiddenSize).cuda())
-    c0 = Variable(torch.zeros(2, len(length), self.hiddenSize).cuda())
     output, _ = self.ratingLSTM(input)
-    output = self.dropout(output)
 
     # Linear
     output = self.ratingLin1(output[:, -1, :])
@@ -172,10 +157,7 @@ class network(tnn.Module):
 
   def forwardCategory(self, input, length):
     # LSTM
-    h0 = Variable(torch.zeros(2, len(length), self.hiddenSize).cuda())
-    c0 = Variable(torch.zeros(2, len(length), self.hiddenSize).cuda())
     output, _ = self.categoryLSTM(input)
-    output = self.dropout(output)
 
     # Linear
     output = self.categoryLin1(output[:, -1, :])
@@ -205,7 +187,7 @@ class loss(tnn.Module):
     # loss = ratingLoss + categoryLoss
     return ratingLoss + categoryLoss
 
-hiddenSize = 512      # number of hidden neurons
+hiddenSize = 256      # number of hidden neurons
 numLayers = 2         # number of layers
 net = network(hiddenSize, numLayers, VectorSize)
 lossFunc = loss()
@@ -215,7 +197,7 @@ lossFunc = loss()
 ################################################################################
 
 trainValSplit = 0.8
-batchSize = 64 # 32
+batchSize = 96 # 32
 epochs = 10
 lr = 0.001
 # optimiser = toptim.SGD(net.parameters(), lr=lr)
